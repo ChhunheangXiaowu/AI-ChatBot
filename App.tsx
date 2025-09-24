@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { GoogleGenAI, Content } from '@google/genai';
 import { Message, ChatSession } from './types';
 import Header from './components/Header';
 import ChatMessage from './components/ChatMessage';
@@ -9,10 +10,17 @@ import Sidebar from './components/Sidebar';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import LoginScreen from './components/LoginScreen';
+import ApiKeyModal from './components/ApiKeyModal';
 
-const ChatInterface: React.FC = () => {
+interface ChatInterfaceProps {
+    apiKey: string;
+    onInvalidApiKey: () => void;
+}
+
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ apiKey, onInvalidApiKey }) => {
     const { currentUser } = useAuth();
     const storageKey = useMemo(() => `chatSessions_${currentUser?.uid}`, [currentUser]);
+    const ai = useMemo(() => new GoogleGenAI({ apiKey }), [apiKey]);
     
     const [sessions, setSessions] = useState<ChatSession[]>([]);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -105,37 +113,51 @@ const ChatInterface: React.FC = () => {
 
         const userMessage: Message = { role: 'user', content: userInput };
 
-        const currentSessionForTitle = sessions.find(s => s.id === activeSessionId);
-        const newTitle = (currentSessionForTitle?.messages.length ?? 0) === 0 
+        const currentSession = sessions.find(s => s.id === activeSessionId);
+        const newTitle = (currentSession?.messages.length ?? 0) === 0 
             ? userInput.substring(0, 35) + (userInput.length > 35 ? '...' : '') 
-            : currentSessionForTitle?.title;
+            : currentSession?.title;
 
-        const updatedSessionsWithUserMessage = sessions.map(s => 
+        setSessions(sessions.map(s => 
             s.id === activeSessionId 
                 ? { ...s, messages: [...s.messages, userMessage], title: newTitle as string } 
                 : s
-        );
-        setSessions(updatedSessionsWithUserMessage);
+        ));
         
         setIsLoading(true);
         setError(null);
+        
+        try {
+            const conversationHistory = (currentSession?.messages || []).map(msg => ({
+                role: msg.role,
+                parts: [{ text: msg.content }]
+            })) as Content[];
 
-        // Mock AI Response - no API key needed
-        setTimeout(() => {
-            const modelMessage: Message = {
-                role: 'model',
-                content: `This is a mock response as the Gemini API has been disconnected.\n\nYou said: "${userInput}"`
-            };
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: [...conversationHistory, { role: 'user', parts: [{ text: userInput }] }],
+            });
 
+            const modelMessage: Message = { role: 'model', content: response.text };
+            
             setSessions(prev => prev.map(s =>
                 s.id === activeSessionId
                     ? { ...s, messages: [...s.messages, modelMessage] }
                     : s
             ));
+        } catch (e: any) {
+             console.error("Gemini API Error:", e);
+             const errorMessage = e.message || 'An unexpected error occurred.';
+             if (errorMessage.includes('API key not valid')) {
+                setError('Gemini API Error: Your API key is not valid. It has been cleared.');
+                onInvalidApiKey();
+             } else {
+                setError(`An error occurred: ${errorMessage}`);
+             }
+        } finally {
             setIsLoading(false);
-        }, 1200);
-
-    }, [activeSessionId, isLoading, sessions]);
+        }
+    }, [activeSessionId, isLoading, sessions, ai, onInvalidApiKey]);
     
     const activeSession = useMemo(() => {
         return sessions.find(s => s.id === activeSessionId);
@@ -180,6 +202,17 @@ const ChatInterface: React.FC = () => {
 
 const AppContent: React.FC = () => {
     const { currentUser, loading } = useAuth();
+    const [apiKey, setApiKey] = useState<string | null>(() => sessionStorage.getItem('gemini-api-key'));
+
+    const handleApiKeySubmit = (key: string) => {
+        sessionStorage.setItem('gemini-api-key', key);
+        setApiKey(key);
+    };
+    
+    const handleInvalidApiKey = () => {
+        sessionStorage.removeItem('gemini-api-key');
+        setApiKey(null);
+    };
 
     if (loading) {
         return (
@@ -189,7 +222,15 @@ const AppContent: React.FC = () => {
         );
     }
 
-    return currentUser ? <ChatInterface /> : <LoginScreen />;
+    if (!currentUser) {
+        return <LoginScreen />;
+    }
+
+    if (!apiKey) {
+        return <ApiKeyModal onSubmit={handleApiKeySubmit} />;
+    }
+
+    return <ChatInterface apiKey={apiKey} onInvalidApiKey={handleInvalidApiKey} />;
 }
 
 
