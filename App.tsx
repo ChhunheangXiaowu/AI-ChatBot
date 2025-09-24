@@ -25,7 +25,17 @@ const ChatInterface: React.FC = () => {
     const aiRef = useRef<GoogleGenAI | null>(null);
 
     useEffect(() => {
-        aiRef.current = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+        const apiKey = process.env.API_KEY;
+        if (!apiKey) {
+            setError("Configuration Error: The Gemini API key is missing. Please set the `API_KEY` environment variable.");
+            return;
+        }
+        try {
+            aiRef.current = new GoogleGenAI({ apiKey });
+        } catch(e) {
+            console.error(e);
+            setError("Initialization Error: Failed to initialize Gemini AI. The API Key might be invalid or malformed.");
+        }
     }, []);
 
     useEffect(() => {
@@ -107,7 +117,12 @@ const ChatInterface: React.FC = () => {
     };
 
     const handleSendMessage = useCallback(async (userInput: string) => {
-        if (!activeSessionId || isLoading || !aiRef.current) return;
+        if (!activeSessionId || isLoading) return;
+
+        if (!aiRef.current) {
+            setError("Gemini AI is not initialized. Please check your API Key configuration.");
+            return;
+        }
 
         const userMessage: Message = { role: 'user', content: userInput };
 
@@ -134,7 +149,6 @@ const ChatInterface: React.FC = () => {
                 throw new Error("Active session not found for API call.");
             }
 
-            // Construct the conversation history for the API from the current session state
             const contents = currentSessionForAPI.messages.map(msg => ({
                 role: msg.role,
                 parts: [{ text: msg.content }],
@@ -168,7 +182,7 @@ const ChatInterface: React.FC = () => {
         } catch (e) {
             const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
             console.error(e);
-            if (errorMessage.toLowerCase().includes('api key not valid')) {
+             if (errorMessage.toLowerCase().includes('api key not valid')) {
                 setError('Gemini API Error: Your API key is not valid. Please ensure the `API_KEY` environment variable is set correctly.');
             } else {
                 setError(`Error: ${errorMessage}`);
