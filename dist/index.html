@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gemini AI Chat Bot</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+      /* Add basic styles */
+      body { margin: 0; font-family: system-ui, sans-serif; }
+      #root { height: 100vh; }
+      .animate-fade-in-up {
+        animation: fadeInUp 0.3s ease-out;
+      }
+      @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .animate-fade-in {
+        animation: fadeIn 0.5s ease-out;
+      }
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@19.1.1",
+          "react-dom": "https://esm.sh/react-dom@19.1.1",
+          "react/jsx-runtime": "https://esm.sh/react@19.1.1/jsx-runtime",
+          "@google/genai": "https://esm.sh/@google/genai@1.20.0"
+        }
+      }
+    </script>
+    <script type="module" crossorigin src="/assets/index-BnxpA_At.js"></script>
+  </head>
+  <body class="bg-slate-900">
+    <div id="root"></div>
+  </body>
+</html>
