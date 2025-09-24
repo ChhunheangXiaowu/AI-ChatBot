@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { GoogleGenAI } from '@google/genai';
 import { Message, ChatSession } from './types';
 import Header from './components/Header';
 import ChatMessage from './components/ChatMessage';
@@ -22,21 +21,6 @@ const ChatInterface: React.FC = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     
     const chatContainerRef = useRef<HTMLDivElement>(null);
-    const aiRef = useRef<GoogleGenAI | null>(null);
-
-    useEffect(() => {
-        const apiKey = process.env.API_KEY;
-        if (!apiKey) {
-            setError("Configuration Error: The Gemini API key is missing. Please set the `API_KEY` environment variable.");
-            return;
-        }
-        try {
-            aiRef.current = new GoogleGenAI({ apiKey });
-        } catch(e) {
-            console.error(e);
-            setError("Initialization Error: Failed to initialize Gemini AI. The API Key might be invalid or malformed.");
-        }
-    }, []);
 
     useEffect(() => {
         if (!currentUser) return;
@@ -119,11 +103,6 @@ const ChatInterface: React.FC = () => {
     const handleSendMessage = useCallback(async (userInput: string) => {
         if (!activeSessionId || isLoading) return;
 
-        if (!aiRef.current) {
-            setError("Gemini AI is not initialized. Please check your API Key configuration.");
-            return;
-        }
-
         const userMessage: Message = { role: 'user', content: userInput };
 
         const currentSessionForTitle = sessions.find(s => s.id === activeSessionId);
@@ -141,55 +120,21 @@ const ChatInterface: React.FC = () => {
         setIsLoading(true);
         setError(null);
 
-        try {
-            const ai = aiRef.current;
-            const currentSessionForAPI = updatedSessionsWithUserMessage.find(s => s.id === activeSessionId);
-
-            if (!currentSessionForAPI) {
-                throw new Error("Active session not found for API call.");
-            }
-
-            const contents = currentSessionForAPI.messages.map(msg => ({
-                role: msg.role,
-                parts: [{ text: msg.content }],
-            }));
-
-            const response = await ai.models.generateContent({
-                model: "gemini-2.5-flash",
-                contents: contents,
-                config: { 
-                    systemInstruction: "You are a helpful AI assistant. Your primary purpose is to provide the most accurate and up-to-date information possible. For every user query, you must use your web search tool to find the latest, real-world information. Synthesize the search results to give a comprehensive and factual answer. Your knowledge is not limited; it is constantly updated by the web.",
-                    tools: [{ googleSearch: {} }] 
-                },
-            });
-            
-            const content = response.text;
-            const rawSources = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-            const sources = rawSources
-                .map((s: any) => s.web)
-                .filter(Boolean)
-                .map((web: any) => ({ uri: web.uri, title: web.title }))
-                .filter((s: any) => s.uri && s.title);
-
-            const modelMessage: Message = { role: 'model', content, ...(sources.length > 0 && { sources }) };
+        // Mock AI Response - no API key needed
+        setTimeout(() => {
+            const modelMessage: Message = {
+                role: 'model',
+                content: `This is a mock response as the Gemini API has been disconnected.\n\nYou said: "${userInput}"`
+            };
 
             setSessions(prev => prev.map(s =>
                 s.id === activeSessionId
                     ? { ...s, messages: [...s.messages, modelMessage] }
                     : s
             ));
-
-        } catch (e) {
-            const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
-            console.error(e);
-             if (errorMessage.toLowerCase().includes('api key not valid')) {
-                setError('Gemini API Error: Your API key is not valid. Please ensure the `API_KEY` environment variable is set correctly.');
-            } else {
-                setError(`Error: ${errorMessage}`);
-            }
-        } finally {
             setIsLoading(false);
-        }
+        }, 1200);
+
     }, [activeSessionId, isLoading, sessions]);
     
     const activeSession = useMemo(() => {
