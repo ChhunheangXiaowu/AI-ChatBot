@@ -1,3 +1,8 @@
+export interface User {
+  uid: string;
+  username?: string | null;
+}
+
 export interface Message {
   role: 'user' | 'model';
   content: string;

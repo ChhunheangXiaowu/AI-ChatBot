@@ -8,8 +8,13 @@ import TypingIndicator from './components/TypingIndicator';
 import WelcomeScreen from './components/WelcomeScreen';
 import Sidebar from './components/Sidebar';
 import { LanguageProvider } from './contexts/LanguageContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import LoginScreen from './components/LoginScreen';
 
-const AppContent: React.FC = () => {
+const ChatInterface: React.FC = () => {
+    const { currentUser } = useAuth();
+    const storageKey = useMemo(() => `chatSessions_${currentUser?.uid}`, [currentUser]);
+    
     const [sessions, setSessions] = useState<ChatSession[]>([]);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -20,44 +25,48 @@ const AppContent: React.FC = () => {
     const aiRef = useRef<GoogleGenAI | null>(null);
 
     useEffect(() => {
-        // Initialize the GoogleGenAI client once on component mount.
         aiRef.current = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
     }, []);
 
     useEffect(() => {
-        // Load sessions from localStorage on initial load.
+        if (!currentUser) return;
         try {
-            const savedSessions = localStorage.getItem('chatSessions');
+            const savedSessions = localStorage.getItem(storageKey);
             if (savedSessions) {
                 const parsedSessions: ChatSession[] = JSON.parse(savedSessions);
                 setSessions(parsedSessions);
-                if (parsedSessions.length > 0 && !activeSessionId) {
+                if (parsedSessions.length > 0) {
                     setActiveSessionId(parsedSessions[0].id);
+                } else {
+                    setActiveSessionId(null);
                 }
+            } else {
+                setSessions([]);
+                setActiveSessionId(null);
             }
         } catch (e) {
             console.error("Failed to load sessions from localStorage", e);
+            setSessions([]);
+            setActiveSessionId(null);
         }
-    }, []); // Empty dependency array ensures this runs only once.
+    }, [currentUser, storageKey]);
 
     useEffect(() => {
-        // Save sessions to localStorage whenever they change.
+        if (!currentUser) return;
         try {
             if (sessions.length > 0) {
-                localStorage.setItem('chatSessions', JSON.stringify(sessions));
+                localStorage.setItem(storageKey, JSON.stringify(sessions));
             } else {
-                 // If all sessions are deleted, clear from storage
-                if (localStorage.getItem('chatSessions')) {
-                    localStorage.removeItem('chatSessions');
+                 if (localStorage.getItem(storageKey)) {
+                    localStorage.removeItem(storageKey);
                 }
             }
         } catch (e) {
             console.error("Failed to save sessions to localStorage", e);
         }
-    }, [sessions]);
+    }, [sessions, currentUser, storageKey]);
     
     useEffect(() => {
-        // Auto-scroll to the latest message.
         if (chatContainerRef.current) {
             chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
         }
@@ -119,22 +128,25 @@ const AppContent: React.FC = () => {
 
         try {
             const ai = aiRef.current;
-            const currentSession = updatedSessionsWithUserMessage.find(s => s.id === activeSessionId);
+            const currentSessionForAPI = updatedSessionsWithUserMessage.find(s => s.id === activeSessionId);
 
-            const history = (currentSession?.messages ?? [])
-              .slice(0, -1)
-              .map(msg => `${msg.role === 'user' ? 'User' : 'Model'}: ${msg.content}`)
-              .join('\n\n');
+            if (!currentSessionForAPI) {
+                throw new Error("Active session not found for API call.");
+            }
 
-            const fullPrompt = history 
-                ? `Given the conversation history:\n\n${history}\n\nAnswer the following question:\n${userInput}`
-                : userInput;
-
+            // Construct the conversation history for the API from the current session state
+            const contents = currentSessionForAPI.messages.map(msg => ({
+                role: msg.role,
+                parts: [{ text: msg.content }],
+            }));
 
             const response = await ai.models.generateContent({
                 model: "gemini-2.5-flash",
-                contents: fullPrompt,
-                config: { tools: [{ googleSearch: {} }] },
+                contents: contents,
+                config: { 
+                    systemInstruction: "You are a helpful AI assistant. Your primary purpose is to provide the most accurate and up-to-date information possible. For every user query, you must use your web search tool to find the latest, real-world information. Synthesize the search results to give a comprehensive and factual answer. Your knowledge is not limited; it is constantly updated by the web.",
+                    tools: [{ googleSearch: {} }] 
+                },
             });
             
             const content = response.text;
@@ -156,7 +168,11 @@ const AppContent: React.FC = () => {
         } catch (e) {
             const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
             console.error(e);
-            setError(`Error: ${errorMessage}`);
+            if (errorMessage.toLowerCase().includes('api key not valid')) {
+                setError('Gemini API Error: Your API key is not valid. Please ensure the `API_KEY` environment variable is set correctly.');
+            } else {
+                setError(`Error: ${errorMessage}`);
+            }
         } finally {
             setIsLoading(false);
         }
@@ -203,10 +219,27 @@ const AppContent: React.FC = () => {
     );
 };
 
+const AppContent: React.FC = () => {
+    const { currentUser, loading } = useAuth();
+
+    if (loading) {
+        return (
+            <div className="h-screen bg-slate-900 flex items-center justify-center text-slate-100">
+                <p>Loading...</p>
+            </div>
+        );
+    }
+
+    return currentUser ? <ChatInterface /> : <LoginScreen />;
+}
+
+
 const App: React.FC = () => (
-    <LanguageProvider>
-        <AppContent />
-    </LanguageProvider>
+    <AuthProvider>
+        <LanguageProvider>
+            <AppContent />
+        </LanguageProvider>
+    </AuthProvider>
 );
 
 export default App;
