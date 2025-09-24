@@ -23,7 +23,7 @@ const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
            <BotIcon />
         </div>
         <h1 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-indigo-500">
-          Gemini AI Chat Bot
+          Khmer AI Chat Bot
         </h1>
       </div>
       <div className="w-6 md:hidden"></div> {/* Spacer to center title */}
